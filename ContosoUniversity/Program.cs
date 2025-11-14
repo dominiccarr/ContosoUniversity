@@ -1,4 +1,6 @@
 using ContosoUniversity.Data;
+using ContosoUniversity.Models;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,13 +13,33 @@ builder.Services.AddDbContext<SchoolContext>(options =>
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
+builder.Services.AddIdentity<Person, IdentityRole<int>>(options =>
+{
+    options.Password.RequiredLength = 4;
+})
+.AddEntityFrameworkStores<SchoolContext>()
+.AddDefaultTokenProviders();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/Identity/Account/Login"; // matches default Razor Pages
+    options.AccessDeniedPath = "/Identity/Account/AccessDenied";
+});
+
+
+builder.Services.AddRazorPages();
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.SetMinimumLevel(LogLevel.Debug);
 var app = builder.Build();
+app.UseAuthentication();
+
 
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
 
-    DbInitializer.Initialize(services);
+    await DbInitializer.InitializeAsync(services);
 }
 
 // Configure the HTTP request pipeline.
@@ -33,12 +55,13 @@ app.UseRouting();
 
 app.UseAuthorization();
 
+app.MapRazorPages();
+
 app.MapStaticAssets();
 
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
-
 
 app.Run();

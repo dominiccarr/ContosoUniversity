@@ -1,11 +1,11 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.AspNetCore.Identity;
 
 namespace ContosoUniversity.Models
 {
-    public abstract class Person
+    public abstract class Person : IdentityUser<int>
     {
-        public int ID { get; set; }
 
         [Required]
         [StringLength(50)]

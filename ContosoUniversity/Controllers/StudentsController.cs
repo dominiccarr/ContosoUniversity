@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
-using Microsoft.EntityFrameworkCore;
 using ContosoUniversity.Data;
 using ContosoUniversity.Models;
 using ContosoUniversity.Models.ViewModels;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace ContosoUniversity.Controllers
@@ -15,13 +18,16 @@ namespace ContosoUniversity.Controllers
     public class StudentsController : Controller
     {
         private readonly SchoolContext _context;
+        private readonly UserManager<Person> _userManager;
 
-        public StudentsController(SchoolContext context)
+        public StudentsController(SchoolContext context, UserManager<Person> userManager)
         {
             _context = context;
+            _userManager = userManager;
         }
 
         // GET: Students
+        [Authorize(Roles = "Admin, Student")]
         public async Task<IActionResult> Index(
             string sortOrder,
             string currentFilter,
@@ -43,45 +49,76 @@ namespace ContosoUniversity.Controllers
 
             ViewData["CurrentFilter"] = searchString;
 
-            var students = from s in _context.Students
-                           select s;
-            if (!String.IsNullOrEmpty(searchString))
+            if (User.IsInRole("Admin"))
             {
-                students = students.Where(s => s.LastName.Contains(searchString)
-                                       || s.FirstMidName.Contains(searchString));
+                var  students = from s in _context.Students
+                               select s;
+                if (!String.IsNullOrEmpty(searchString))
+                {
+                    students = students.Where(s => s.LastName.Contains(searchString)
+                                           || s.FirstMidName.Contains(searchString));
+                }
+                switch (sortOrder)
+                {
+                    case "name_desc":
+                        students = students.OrderByDescending(s => s.LastName);
+                        break;
+                    case "Date":
+                        students = students.OrderBy(s => s.EnrollmentDate);
+                        break;
+                    case "date_desc":
+                        students = students.OrderByDescending(s => s.EnrollmentDate);
+                        break;
+                    default:
+                        students = students.OrderBy(s => s.LastName);
+                        break;
+                }
+
+                int pageSize = 3;
+                return View(await PaginatedList<Student>.CreateAsync(students.AsNoTracking(), pageNumber ?? 1, pageSize));
             }
-            switch (sortOrder)
+            else if (User.IsInRole("Student"))
             {
-                case "name_desc":
-                    students = students.OrderByDescending(s => s.LastName);
-                    break;
-                case "Date":
-                    students = students.OrderBy(s => s.EnrollmentDate);
-                    break;
-                case "date_desc":
-                    students = students.OrderByDescending(s => s.EnrollmentDate);
-                    break;
-                default:
-                    students = students.OrderBy(s => s.LastName);
-                    break;
+                string userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                int userId = int.Parse(userIdStr); // because your Identity uses int IDs
+
+                var user = await _userManager.FindByIdAsync(userId.ToString());
+
+                return RedirectToAction("Details", "Students", new { id = user.Id });
+            }
+            else
+            {
+                return RedirectToAction("Login", "Account");
             }
 
-            int pageSize = 3;
-            return View(await PaginatedList<Student>.CreateAsync(students.AsNoTracking(), pageNumber ?? 1, pageSize));
+
         }
 
         // GET: Students/Details/5
+        [Authorize(Roles = "Admin, Student")]
         public async Task<IActionResult> Details(int? id)
         {
             if (id == null)
             {
                 return NotFound();
             }
+
+            string userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            int userId = int.Parse(userIdStr); // because your Identity uses int IDs
+
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+
+            if (User.IsInRole("Student") && user.Id != id)
+            {
+                return RedirectToAction("Details", "Students", new { id = user.Id });
+            }
             var student = await _context.Students
                 .Include(s => s.Enrollments)
                     .ThenInclude(e => e.Course)
                 .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.ID == id);
+                .FirstOrDefaultAsync(m => m.Id == id);
 
             if (student == null)
             {
@@ -91,6 +128,7 @@ namespace ContosoUniversity.Controllers
             return View(student);
         }
 
+        //[Authorize(Roles = "Admin")]
         // GET: Students/Create
         public IActionResult Create()
         {
@@ -144,9 +182,9 @@ namespace ContosoUniversity.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("ID,LastName,FirstMidName,EnrollmentDate")] Student student)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,LastName,FirstMidName,EnrollmentDate")] Student student)
         {
-            if (id != student.ID)
+            if (id != student.Id)
             {
                 return NotFound();
             }
@@ -155,12 +193,16 @@ namespace ContosoUniversity.Controllers
             {
                 try
                 {
-                    _context.Update(student);
-                    await _context.SaveChangesAsync();
+                    var existingStudent = await _context.Students.FindAsync(student.Id);
+                    if (existingStudent != null)
+                    {
+                        _context.Entry(existingStudent).CurrentValues.SetValues(student);
+                        await _context.SaveChangesAsync();
+                    }
                 }
                 catch (DbUpdateConcurrencyException)
                 {
-                    if (!StudentExists(student.ID))
+                    if (!StudentExists(student.Id))
                     {
                         return NotFound();
                     }
@@ -183,7 +225,7 @@ namespace ContosoUniversity.Controllers
             }
 
             var student = await _context.Students
-                .FirstOrDefaultAsync(m => m.ID == id);
+                .FirstOrDefaultAsync(m => m.Id == id);
             if (student == null)
             {
                 return NotFound();
@@ -209,7 +251,7 @@ namespace ContosoUniversity.Controllers
 
         private bool StudentExists(int id)
         {
-            return _context.Students.Any(e => e.ID == id);
+            return _context.Students.Any(e => e.Id == id);
         }
     }
 }
