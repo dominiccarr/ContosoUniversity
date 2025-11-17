@@ -18,7 +18,7 @@ builder.Services.AddIdentity<Person, IdentityRole<int>>(options =>
     options.Password.RequiredLength = 4;
 })
 .AddEntityFrameworkStores<SchoolContext>()
-.AddDefaultTokenProviders();
+.AddDefaultTokenProviders().AddDefaultUI();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
