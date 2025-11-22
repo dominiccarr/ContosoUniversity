@@ -114,8 +114,8 @@ namespace ContosoUniversity.Areas.Identity.Pages.Account
                 UserManager<Person> m = _signInManager.UserManager;
                 var user = await m.FindByEmailAsync(Input.Email);
 
-                var roles = await m.GetRolesAsync(user);
-                Console.WriteLine($"Roles: {string.Join(", ", roles)}");
+                //var roles = await m.GetRolesAsync(user);
+                //Console.WriteLine($"Roles: {string.Join(", ", roles)}");
 
                 if (user == null)
                 {
